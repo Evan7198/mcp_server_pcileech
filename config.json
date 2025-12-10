@@ -1,0 +1,10 @@
+{
+  "pcileech": {
+    "executable_path": "pcileech\\pcileech.exe",
+    "timeout_seconds": 30
+  },
+  "server": {
+    "name": "mcp-server-pcileech",
+    "version": "0.1.0"
+  }
+}
