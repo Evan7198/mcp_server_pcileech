@@ -33,7 +33,7 @@
 ### 1. 克隆仓库
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Evan7198/mcp_server_pcileech
 cd mcp_server_pcileech
 ```
 
