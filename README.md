@@ -1,4 +1,4 @@
-# MCP Server for PCILeech
+# MCP Server for PCILeec
 
 [English](#english) | [中文](README_CN.md)
 
