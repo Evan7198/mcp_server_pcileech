@@ -4,42 +4,40 @@
 
 ## English
 
-A Model Context Protocol (MCP) server that provides a standardized interface to PCILeech for DMA-based memory operations. This server enables AI assistants like Claude to perform memory debugging through natural language commands.
+A Model Context Protocol (MCP) server that provides a standardized interface to PCILeech for DMA-based memory operations. This enables MCP clients (e.g., Claude Code) to perform memory/debug workflows through tool calls.
 
-**Authors:** EVAN & MOER
+**Authors:** EVAN & MOER  
 **Support:** [Join our Discord](https://discord.gg/PwAXYPMkkF)
 
 ## Features
 
-- **Three MCP Tools**:
-  - `memory_read`: Read memory from any address
-  - `memory_write`: Write data to memory
-  - `memory_format`: Multi-view memory formatting (hex dump, ASCII, byte array, DWORD)
-
-- **Low Latency**: Direct subprocess calls to PCILeech binary
-- **AI-Friendly**: Natural language interface through MCP protocol
-- **Simple Configuration**: Minimal dependencies, easy setup
-- **Multiple Formats**: View memory in hex, ASCII, byte arrays, and DWORD arrays
+- **19 MCP tools** grouped by capability:
+  - **Core Memory:** `memory_read`, `memory_write`, `memory_format`
+  - **System:** `system_info`, `memory_probe`, `memory_dump`, `memory_search`, `memory_patch`, `process_list`
+  - **Address Translation:** `translate_phys2virt`, `translate_virt2phys`, `process_virt2phys`
+  - **Kernel Module (KMD):** `kmd_load`, `kmd_exit`, `kmd_execute`, `kmd_list_scripts`
+  - **Advanced/FPGA:** `benchmark`, `tlp_send`, `fpga_config`
+- **Virtual address mode:** memory tools support `pid` or `process_name` (mutually exclusive)
+- **Non-blocking server:** PCILeech calls are executed via `asyncio.to_thread`
+- **Output helpers:** hexdump + ASCII + byte/DWORD views for analysis
 
 ## Prerequisites
 
 - **Windows 10/11** (x64)
 - **Python 3.10+**
 - **PCILeech hardware** properly configured and working
-- **PCILeech binary** (included in `pcileech/` directory)
+- **PCILeech binaries** (bundled under `pcileech/`)
 
 ## Quick Start
 
-### 1. Clone Repository
+### 1. Clone
 
 ```bash
 git clone https://github.com/Evan7198/mcp_server_pcileech
 cd mcp_server_pcileech
 ```
 
-### 2. Install Dependencies
-
-Create and activate virtual environment:
+### 2. Install dependencies
 
 ```bash
 python -m venv .venv
@@ -47,20 +45,22 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-### 3. Verify PCILeech
+If you hit MCP import/version issues, install from `pyproject.toml` instead:
 
-Test that PCILeech hardware is working:
+```bash
+pip install -e .
+```
+
+### 3. Verify PCILeech
 
 ```bash
 cd pcileech
 pcileech.exe probe
 ```
 
-You should see hardware detection output.
+### 4. Configure Claude Code (MCP)
 
-### 4. Configure for Claude Code
-
-Add this configuration to your Claude Code MCP settings:
+Add a server entry (adjust paths):
 
 ```json
 "mcpServers": {
@@ -75,15 +75,11 @@ Add this configuration to your Claude Code MCP settings:
 }
 ```
 
-**Important:** Replace `C:\\path\\to\\mcp_server_pcileech` with your actual project path.
-
-### 5. Restart Claude Code
-
-After adding the configuration, restart Claude Code to load the MCP server.
+Restart Claude Code after editing the MCP config.
 
 ## Configuration
 
-The server uses `config.json` for configuration:
+`config.json` controls the PCILeech executable path and timeouts:
 
 ```json
 {
@@ -93,210 +89,149 @@ The server uses `config.json` for configuration:
   },
   "server": {
     "name": "mcp-server-pcileech",
-    "version": "0.1.0"
+    "version": "1.0.0"
   }
 }
 ```
 
-Adjust `executable_path` and `timeout_seconds` if needed for your setup.
-
 ## Usage Examples
 
-Once configured in Claude Code, you can use natural language commands:
-
-### Reading Memory
+Once configured, you can request actions in natural language; the client will translate them into tool calls:
 
 ```
 Read 256 bytes from address 0x1000
 ```
 
-### Writing Memory
-
 ```
 Write the hex data 48656c6c6f to address 0x2000
 ```
-
-### Formatted Memory View
 
 ```
 Show me a formatted view of 64 bytes at address 0x1000
 ```
 
-This will display:
-- Hex dump with ASCII sidebar
-- Pure ASCII view
-- Byte array (decimal)
-- DWORD array (little-endian)
-- Raw hex string
+## MCP Tools (Overview)
 
-## MCP Tools Reference
+Notes:
+- **Virtual memory mode:** for memory tools, use `pid` *or* `process_name` (not both).
+- **FPGA-only:** some operations require an FPGA-backed device (e.g., `memory_probe`, `tlp_send`).
 
-### memory_read
+### Core Memory
 
-Read raw memory from specified address.
+- `memory_read(address, length, pid?, process_name?)` → hex data + metadata
+- `memory_write(address, data, pid?, process_name?)` → success/confirmation
+- `memory_format(address, length, formats?, pid?, process_name?)` → hexdump/ASCII/arrays/raw
 
-**Parameters:**
-- `address` (string): Memory address in hex format (e.g., "0x1000" or "1000")
-- `length` (integer): Number of bytes to read (1-1048576, max 1MB)
+### System
 
-**Returns:** Hex string of memory data with metadata
+- `system_info(verbose?)` → target system + device info
+- `memory_probe(min_address?, max_address?)` → readable regions (**FPGA only**)
+- `memory_dump(min_address, max_address, output_file?, force?)` → dump file path/result
+- `memory_search(pattern? | signature?, min_address?, max_address?, find_all?)` → matches
+- `memory_patch(signature, min_address?, max_address?, patch_all?)` → patch result
+- `process_list()` → PID/PPID/name list
 
-### memory_write
+### Address Translation
 
-Write data to memory at specified address.
+- `translate_phys2virt(physical_address, cr3)` → translation details
+- `translate_virt2phys(virtual_address, cr3)` → translation details
+- `process_virt2phys(pid, virtual_address)` → translation details
 
-**Parameters:**
-- `address` (string): Memory address in hex format
-- `data` (string): Hex string of data to write (e.g., "48656c6c6f")
+### Kernel Module (KMD)
 
-**Returns:** Success status with confirmation
+- `kmd_load(kmd_type, use_pt?, cr3?)` → load result (+ caches KMD address)
+- `kmd_exit(kmd_address?)` → unload result (uses cached address if omitted)
+- `kmd_execute(script_name, kmd_address?, input_file?, output_file?, parameter_string?, parameter_int0?, parameter_int1?)`
+- `kmd_list_scripts(platform?)` → available `.ksh` scripts grouped by platform
 
-### memory_format
+### Advanced / FPGA
 
-Read memory and format in multiple views for AI analysis.
-
-**Parameters:**
-- `address` (string): Memory address in hex format
-- `length` (integer): Number of bytes to read (1-4096, max 4KB)
-- `formats` (array, optional): Format types to include - ["hexdump", "ascii", "bytes", "dwords", "raw"]
-
-**Returns:** Multi-format memory view
+- `benchmark(test_type?, address?)` → MB/s results (depends on hardware)
+- `tlp_send(tlp_data?, wait_seconds?, verbose?)` → sent/received TLPs (**FPGA only**)
+- `fpga_config(action?, address?, data?, output_file?)` → config read/write (**FPGA only**)
 
 ## Architecture
 
 ### Two-Layer Design
 
-1. **MCP Server Layer** (`main.py`)
-   - Handles MCP protocol communication via stdio transport
-   - Defines tool schemas and parameter validation
-   - Formats output for AI analysis
-   - Async tool handlers: `handle_memory_read`, `handle_memory_write`, `handle_memory_format`
-
-2. **PCILeech Wrapper Layer** (`pcileech_wrapper.py`)
-   - Manages PCILeech executable subprocess calls
-   - Handles address alignment and chunked reads (256-byte blocks, 16-byte alignment)
-   - Parses PCILeech output format
-   - Timeout and error handling
-
-### Key Implementation Details
-
-**Memory Read Alignment:**
-- PCILeech `display` command always returns 256 bytes aligned to 16-byte boundaries
-- `read_memory()` automatically handles:
-  - Calculating aligned addresses
-  - Chunked reading of 256-byte blocks
-  - Extracting and concatenating requested byte ranges
-  - Supporting arbitrary addresses and lengths
+1. **MCP server layer** (`main.py`)
+   - Stdio transport, tool schemas, validation, formatting
+   - Uses `asyncio.to_thread()` to avoid blocking the event loop
+2. **PCILeech wrapper** (`pcileech_wrapper.py`)
+   - Subprocess calls into `pcileech.exe`
+   - Address alignment + 256-byte chunking (PCILeech `display` behavior)
+   - Output parsing, timeouts, and error mapping
 
 ## Troubleshooting
 
-### PCILeech Not Found
+### PCILeech not found
 
-**Error:** `PCILeech executable not found`
+**Error:** `PCILeech executable not found`  
+**Fix:** verify `config.json` → `pcileech.executable_path`
 
-**Solution:** Verify the path in `config.json` points to the correct location of `pcileech.exe`
+### Hardware not connected
 
-### Hardware Not Connected
+**Warning:** `PCILeech connection verification failed`  
+**Fix:** run `pcileech\\pcileech.exe probe` and validate drivers/cabling
 
-**Warning:** `PCILeech connection verification failed`
+### Memory access fails
 
-**Solution:**
-- Ensure PCILeech hardware is properly connected
-- Test with `pcileech.exe probe` directly
-- Check hardware drivers are installed
+**Error:** `Memory read/write failed`  
+**Fix:** validate address/range on the CLI first, then retry via MCP
 
-### Memory Read/Write Fails
+### Timeout
 
-**Error:** `Memory read/write failed`
-
-**Possible causes:**
-- Invalid memory address
-- Hardware access denied
-- Target system not accessible
-- Insufficient permissions
-
-**Solution:** Verify the target address is valid and accessible by testing with PCILeech CLI first.
-
-### Timeout Errors
-
-**Error:** `PCILeech command timed out`
-
-**Solution:** Increase `timeout_seconds` in `config.json` if operations are legitimately slow.
+**Error:** `PCILeech command timed out`  
+**Fix:** increase `pcileech.timeout_seconds` in `config.json`
 
 ## Project Structure
 
 ```
 mcp_server_pcileech/
-├── main.py                 # MCP server entry point
-├── pcileech_wrapper.py     # PCILeech integration layer
-├── config.json             # Configuration file
-├── requirements.txt        # Python dependencies
-├── pyproject.toml          # Project metadata
-├── README.md               # This file (English)
-├── README_CN.md            # Chinese version
-├── CLAUDE.md               # Claude Code guidance
-├── docs/
-│   └── brief.md            # Project brief
-└── pcileech/               # PCILeech binary and dependencies
-    └── pcileech.exe
+├── main.py
+├── pcileech_wrapper.py
+├── config.json
+├── pyproject.toml
+├── requirements.txt
+├── run_tests.py
+├── TEST_CHECKLIST.md
+├── README.md
+├── README_CN.md
+├── CLAUDE.md
+├── test_error/               # generated by run_tests.py on failures
+└── pcileech/
+    ├── pcileech.exe
+    └── LICENSE.txt
 ```
 
 ## Development
 
-### Code Formatting
-
 ```bash
 black main.py pcileech_wrapper.py
-```
-
-### Type Checking
-
-```bash
 mypy main.py pcileech_wrapper.py
+python -m py_compile main.py pcileech_wrapper.py
+python run_tests.py
 ```
 
-### Running Tests
-
-```bash
-pytest
-```
-
-## Performance
-
-- **MCP Server overhead:** < 100ms per operation
-- **PCILeech native performance:** Maintained (no additional overhead)
-- **End-to-end latency:** < 5 seconds (including AI processing)
+`run_tests.py` only covers non-hardware checks. Hardware tests are marked as `[HW]` in `TEST_CHECKLIST.md`.
 
 ## Limitations
 
-- **Windows only:** PCILeech is Windows-specific
-- **Hardware dependent:** Requires PCILeech hardware connection
-- **Read size limits:**
-  - `memory_read`: Maximum 1MB
-  - `memory_format`: Maximum 4KB (for readable output)
-- **Synchronous PCILeech calls:** Wrapper uses subprocess.run (blocking), called in async context
-- **No concurrent memory operations:** Each PCILeech command executes sequentially
+- Windows only (PCILeech is Windows-focused in this repo)
+- Requires compatible PCILeech hardware for real memory operations
+- Read size limits:
+  - `memory_read`: up to 1MB
+  - `memory_format`: up to 4KB (readable output)
+- Some tools are **FPGA-only** (probe/TLP/config)
+- PCILeech commands run sequentially (per subprocess call)
 
 ## Security & Legal
 
-**IMPORTANT DISCLAIMER**
-
-This tool is designed for:
-- Authorized hardware debugging
-- Security research with proper authorization
-- Educational purposes
-- Personal hardware development
-
-**DO NOT use for:**
-- Unauthorized access to systems
-- Malicious activities
-- Circumventing security measures without permission
-
-Users are responsible for ensuring their use complies with all applicable laws and regulations.
+This tool is intended for authorized debugging/security research/education. Do not use it for unauthorized access or malicious activity. You are responsible for complying with applicable laws and regulations.
 
 ## License
 
-This project wraps PCILeech which has its own license. See `pcileech/LICENSE.txt` for PCILeech licensing.
+This project wraps PCILeech, which has its own license. See `pcileech/LICENSE.txt`.
 
 ## Credits
 
@@ -306,21 +241,25 @@ This project wraps PCILeech which has its own license. See `pcileech/LICENSE.txt
 
 ## Version
 
-**v0.1.0** - Initial MVP Release
+The toolset in this repository currently includes the 19-tool extended set. For the package/config version, refer to:
+- `pyproject.toml` (`[project].version`)
+- `config.json` (`server.version`)
 
 ## Support
 
-- **Discord Community:** [Join our Discord](https://discord.gg/PwAXYPMkkF)
-- **Issues:** Open an issue in this repository
-- **PCILeech Documentation:** [PCILeech GitHub](https://github.com/ufrisk/pcileech)
-- **MCP Protocol:** [MCP Documentation](https://modelcontextprotocol.io/)
+- Discord: [Join our Discord](https://discord.gg/PwAXYPMkkF)
+- Issues: open an issue in this repository
+- PCILeech docs: [PCILeech GitHub](https://github.com/ufrisk/pcileech)
+- MCP docs: [MCP Documentation](https://modelcontextprotocol.io/)
 
 ## Changelog
 
+### v1.0.0 (2025-12-16)
+- Extended to 19 MCP tools covering full PCILeech functionality
+- Added virtual address mode (`pid` / `process_name`) to memory tools
+- Added address translation, KMD, and FPGA/advanced tools
+- Added broader validation and error handling; non-blocking server execution
+
 ### v0.1.0 (2025-12-10)
 - Initial release
-- Three MCP tools: memory_read, memory_write, memory_format
-- PCILeech subprocess integration
-- Basic error handling and timeout support
-- Claude Code integration support
-- Multi-format memory visualization
+- Three MCP tools: `memory_read`, `memory_write`, `memory_format`

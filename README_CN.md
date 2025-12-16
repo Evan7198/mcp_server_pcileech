@@ -4,29 +4,29 @@
 
 ## 中文
 
-一个为 PCILeech 提供标准化接口的模型上下文协议（MCP）服务器，用于基于 DMA 的内存操作。该服务器使 Claude 等 AI 助手能够通过自然语言命令执行内存调试。
+一个为 PCILeech 提供标准化接口的模型上下文协议（MCP）服务器，用于基于 DMA 的内存操作。它可以让 MCP 客户端（例如 Claude Code）通过工具调用完成内存/调试相关工作流。
 
-**作者：** EVAN & MOER
+**作者：** EVAN & MOER  
 **支持：** [加入我们的 Discord](https://discord.gg/PwAXYPMkkF)
 
 ## 功能特性
 
-- **三个 MCP 工具**：
-  - `memory_read`：从任意地址读取内存
-  - `memory_write`：向内存写入数据
-  - `memory_format`：多视图内存格式化（十六进制转储、ASCII、字节数组、DWORD）
-
-- **低延迟**：直接调用 PCILeech 可执行文件的子进程
-- **AI 友好**：通过 MCP 协议提供自然语言接口
-- **简单配置**：最小依赖，易于设置
-- **多种格式**：以十六进制、ASCII、字节数组和 DWORD 数组查看内存
+- **19 个 MCP 工具**（按能力分组）：
+  - **核心内存：** `memory_read`, `memory_write`, `memory_format`
+  - **系统：** `system_info`, `memory_probe`, `memory_dump`, `memory_search`, `memory_patch`, `process_list`
+  - **地址转换：** `translate_phys2virt`, `translate_virt2phys`, `process_virt2phys`
+  - **内核模块（KMD）：** `kmd_load`, `kmd_exit`, `kmd_execute`, `kmd_list_scripts`
+  - **高级/FPGA：** `benchmark`, `tlp_send`, `fpga_config`
+- **虚拟地址模式：** 内存工具支持 `pid` 或 `process_name`（二选一，互斥）
+- **非阻塞服务器：** 通过 `asyncio.to_thread` 执行 PCILeech 调用，避免阻塞事件循环
+- **输出辅助：** 支持 hexdump + ASCII + byte/DWORD 视图，便于分析
 
 ## 前置要求
 
 - **Windows 10/11**（x64）
 - **Python 3.10+**
 - **PCILeech 硬件**已正确配置并正常工作
-- **PCILeech 可执行文件**（包含在 `pcileech/` 目录中）
+- **PCILeech 二进制文件**（本仓库在 `pcileech/` 下已包含）
 
 ## 快速开始
 
@@ -39,28 +39,28 @@ cd mcp_server_pcileech
 
 ### 2. 安装依赖
 
-创建并激活虚拟环境：
-
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. 验证 PCILeech
+如果遇到 MCP 相关的导入/版本问题，建议改用 `pyproject.toml` 安装：
 
-测试 PCILeech 硬件是否正常工作：
+```bash
+pip install -e .
+```
+
+### 3. 验证 PCILeech
 
 ```bash
 cd pcileech
 pcileech.exe probe
 ```
 
-您应该看到硬件检测输出。
+### 4. 配置 Claude Code（MCP）
 
-### 4. 配置 Claude Code
-
-将以下配置添加到您的 Claude Code MCP 设置中：
+在 Claude Code 的 MCP 配置中添加（按实际路径修改）：
 
 ```json
 "mcpServers": {
@@ -75,15 +75,11 @@ pcileech.exe probe
 }
 ```
 
-**重要提示：** 将 `C:\\path\\to\\mcp_server_pcileech` 替换为您的实际项目路径。
-
-### 5. 重启 Claude Code
-
-添加配置后，重启 Claude Code 以加载 MCP 服务器。
+修改完成后重启 Claude Code 以加载 MCP 服务器。
 
 ## 配置说明
 
-服务器使用 `config.json` 进行配置：
+`config.json` 用于指定 PCILeech 可执行文件路径与超时等：
 
 ```json
 {
@@ -93,210 +89,149 @@ pcileech.exe probe
   },
   "server": {
     "name": "mcp-server-pcileech",
-    "version": "0.1.0"
+    "version": "1.0.0"
   }
 }
 ```
 
-根据您的设置调整 `executable_path` 和 `timeout_seconds`。
-
 ## 使用示例
 
-在 Claude Code 中配置完成后，您可以使用自然语言命令：
-
-### 读取内存
+完成配置后，可以直接用自然语言发起请求；客户端会将其转换为工具调用：
 
 ```
 从地址 0x1000 读取 256 字节
 ```
 
-### 写入内存
-
 ```
 将十六进制数据 48656c6c6f 写入地址 0x2000
 ```
-
-### 格式化内存视图
 
 ```
 显示地址 0x1000 处 64 字节的格式化视图
 ```
 
-这将显示：
-- 带 ASCII 侧边栏的十六进制转储
-- 纯 ASCII 视图
-- 字节数组（十进制）
-- DWORD 数组（小端序）
-- 原始十六进制字符串
+## MCP 工具（概览）
 
-## MCP 工具参考
+说明：
+- **虚拟内存模式：** 对内存工具使用 `pid` *或* `process_name`（不可同时使用）。
+- **仅 FPGA：** 部分操作需要 FPGA 设备（例如 `memory_probe`、`tlp_send`）。
 
-### memory_read
+### 核心内存
 
-从指定地址读取原始内存。
+- `memory_read(address, length, pid?, process_name?)` → 读取结果（hex + 元数据）
+- `memory_write(address, data, pid?, process_name?)` → 写入结果（成功/确认）
+- `memory_format(address, length, formats?, pid?, process_name?)` → 多视图（hexdump/ASCII/数组/raw）
 
-**参数：**
-- `address`（字符串）：十六进制格式的内存地址（例如 "0x1000" 或 "1000"）
-- `length`（整数）：要读取的字节数（1-1048576，最大 1MB）
+### 系统
 
-**返回：** 带元数据的内存数据十六进制字符串
+- `system_info(verbose?)` → 目标系统与设备信息
+- `memory_probe(min_address?, max_address?)` → 可读区域（**仅 FPGA**）
+- `memory_dump(min_address, max_address, output_file?, force?)` → 转储到文件
+- `memory_search(pattern? | signature?, min_address?, max_address?, find_all?)` → 搜索命中
+- `memory_patch(signature, min_address?, max_address?, patch_all?)` → 签名修补结果
+- `process_list()` → 进程列表（PID/PPID/名称）
 
-### memory_write
+### 地址转换
 
-向指定地址的内存写入数据。
+- `translate_phys2virt(physical_address, cr3)` → 地址转换结果
+- `translate_virt2phys(virtual_address, cr3)` → 地址转换结果
+- `process_virt2phys(pid, virtual_address)` → 地址转换结果
 
-**参数：**
-- `address`（字符串）：十六进制格式的内存地址
-- `data`（字符串）：要写入的十六进制数据字符串（例如 "48656c6c6f"）
+### 内核模块（KMD）
 
-**返回：** 带确认的成功状态
+- `kmd_load(kmd_type, use_pt?, cr3?)` → 加载结果（并缓存 KMD 地址）
+- `kmd_exit(kmd_address?)` → 卸载结果（省略时使用缓存地址）
+- `kmd_execute(script_name, kmd_address?, input_file?, output_file?, parameter_string?, parameter_int0?, parameter_int1?)`
+- `kmd_list_scripts(platform?)` → 可用 `.ksh` 脚本（按平台分组）
 
-### memory_format
+### 高级 / FPGA
 
-读取内存并以多种视图格式化以供 AI 分析。
-
-**参数：**
-- `address`（字符串）：十六进制格式的内存地址
-- `length`（整数）：要读取的字节数（1-4096，最大 4KB）
-- `formats`（数组，可选）：要包含的格式类型 - ["hexdump", "ascii", "bytes", "dwords", "raw"]
-
-**返回：** 多格式内存视图
+- `benchmark(test_type?, address?)` → 性能结果（与硬件相关）
+- `tlp_send(tlp_data?, wait_seconds?, verbose?)` → 发送/接收 TLP（**仅 FPGA**）
+- `fpga_config(action?, address?, data?, output_file?)` → 读写配置空间（**仅 FPGA**）
 
 ## 架构设计
 
 ### 两层设计
 
 1. **MCP 服务器层**（`main.py`）
-   - 通过 stdio 传输处理 MCP 协议通信
-   - 定义工具架构和参数验证
-   - 格式化输出供 AI 分析
-   - 异步工具处理器：`handle_memory_read`、`handle_memory_write`、`handle_memory_format`
-
+   - stdio 传输、工具 schema、参数验证、输出格式化
+   - 通过 `asyncio.to_thread()` 避免阻塞事件循环
 2. **PCILeech 包装层**（`pcileech_wrapper.py`）
-   - 管理 PCILeech 可执行文件的子进程调用
-   - 处理地址对齐和分块读取（256 字节块，16 字节对齐）
-   - 解析 PCILeech 输出格式
-   - 超时和错误处理
-
-### 关键实现细节
-
-**内存读取对齐：**
-- PCILeech 的 `display` 命令总是返回对齐到 16 字节边界的 256 字节
-- `read_memory()` 自动处理：
-  - 计算对齐地址
-  - 分块读取 256 字节块
-  - 提取和拼接请求的字节范围
-  - 支持任意地址和长度
+   - 以 subprocess 方式调用 `pcileech.exe`
+   - 地址对齐与 256 字节分块（匹配 PCILeech `display` 行为）
+   - 输出解析、超时与错误映射
 
 ## 故障排除
 
-### PCILeech 未找到
+### 找不到 PCILeech
 
-**错误：** `PCILeech executable not found`
-
-**解决方案：** 验证 `config.json` 中的路径指向 `pcileech.exe` 的正确位置
+**错误：** `PCILeech executable not found`  
+**解决：** 检查 `config.json` → `pcileech.executable_path`
 
 ### 硬件未连接
 
-**警告：** `PCILeech connection verification failed`
+**警告：** `PCILeech connection verification failed`  
+**解决：** 先运行 `pcileech\\pcileech.exe probe`，确认驱动/连线/设备正常
 
-**解决方案：**
-- 确保 PCILeech 硬件正确连接
-- 直接使用 `pcileech.exe probe` 测试
-- 检查硬件驱动程序是否已安装
+### 内存访问失败
 
-### 内存读写失败
+**错误：** `Memory read/write failed`  
+**解决：** 先用 PCILeech CLI 验证地址/范围可访问，再通过 MCP 重试
 
-**错误：** `Memory read/write failed`
+### 超时
 
-**可能原因：**
-- 无效的内存地址
-- 硬件访问被拒绝
-- 目标系统不可访问
-- 权限不足
-
-**解决方案：** 首先使用 PCILeech CLI 测试，验证目标地址有效且可访问。
-
-### 超时错误
-
-**错误：** `PCILeech command timed out`
-
-**解决方案：** 如果操作确实较慢，请在 `config.json` 中增加 `timeout_seconds`。
+**错误：** `PCILeech command timed out`  
+**解决：** 增大 `config.json` → `pcileech.timeout_seconds`
 
 ## 项目结构
 
 ```
 mcp_server_pcileech/
-├── main.py                 # MCP 服务器入口点
-├── pcileech_wrapper.py     # PCILeech 集成层
-├── config.json             # 配置文件
-├── requirements.txt        # Python 依赖
-├── pyproject.toml          # 项目元数据
-├── README.md               # 英文版
-├── README_CN.md            # 本文件（中文版）
-├── CLAUDE.md               # Claude Code 指导
-├── docs/
-│   └── brief.md            # 项目简介
-└── pcileech/               # PCILeech 可执行文件和依赖
-    └── pcileech.exe
+├── main.py
+├── pcileech_wrapper.py
+├── config.json
+├── pyproject.toml
+├── requirements.txt
+├── run_tests.py
+├── TEST_CHECKLIST.md
+├── README.md
+├── README_CN.md
+├── CLAUDE.md
+├── test_error/               # run_tests.py 失败时生成
+└── pcileech/
+    ├── pcileech.exe
+    └── LICENSE.txt
 ```
 
 ## 开发
 
-### 代码格式化
-
 ```bash
 black main.py pcileech_wrapper.py
-```
-
-### 类型检查
-
-```bash
 mypy main.py pcileech_wrapper.py
+python -m py_compile main.py pcileech_wrapper.py
+python run_tests.py
 ```
 
-### 运行测试
-
-```bash
-pytest
-```
-
-## 性能
-
-- **MCP 服务器开销：** 每次操作 < 100ms
-- **PCILeech 原生性能：** 保持（无额外开销）
-- **端到端延迟：** < 5 秒（包括 AI 处理）
+`run_tests.py` 仅覆盖无硬件的检查项；需要硬件的测试在 `TEST_CHECKLIST.md` 中以 `[HW]` 标注。
 
 ## 限制
 
-- **仅限 Windows：** PCILeech 是 Windows 专用
-- **硬件依赖：** 需要 PCILeech 硬件连接
-- **读取大小限制：**
+- 仅限 Windows（本仓库以 Windows 环境为主）
+- 实际内存操作依赖兼容的 PCILeech 硬件
+- 读取大小限制：
   - `memory_read`：最大 1MB
-  - `memory_format`：最大 4KB（用于可读输出）
-- **同步 PCILeech 调用：** 包装器使用 subprocess.run（阻塞），在异步上下文中调用
-- **无并发内存操作：** 每个 PCILeech 命令顺序执行
+  - `memory_format`：最大 4KB（可读输出）
+- 部分工具为 **仅 FPGA**（probe/TLP/config）
+- PCILeech 命令按子进程调用顺序执行（串行）
 
 ## 安全与法律
 
-**重要免责声明**
-
-此工具设计用于：
-- 授权的硬件调试
-- 具有适当授权的安全研究
-- 教育目的
-- 个人硬件开发
-
-**请勿用于：**
-- 未经授权访问系统
-- 恶意活动
-- 未经许可规避安全措施
-
-用户有责任确保其使用符合所有适用的法律法规。
+本工具仅用于已授权的调试/安全研究/教育用途。请勿用于未授权访问或恶意行为；使用者需自行确保符合法律法规与授权要求。
 
 ## 许可证
 
-本项目包装了 PCILeech，PCILeech 有其自己的许可证。有关 PCILeech 许可的信息，请参阅 `pcileech/LICENSE.txt`。
+本项目封装了 PCILeech，PCILeech 有其自己的许可证。请参阅 `pcileech/LICENSE.txt`。
 
 ## 致谢
 
@@ -306,21 +241,25 @@ pytest
 
 ## 版本
 
-**v0.1.0** - 初始版本
+本仓库当前包含 19 工具的扩展工具集；具体包/配置版本以以下文件为准：
+- `pyproject.toml`（`[project].version`）
+- `config.json`（`server.version`）
 
 ## 支持
 
-- **Discord 社区：** [加入我们的 Discord](https://discord.gg/PwAXYPMkkF)
-- **问题反馈：** 在本仓库中提交 issue
-- **PCILeech 文档：** [PCILeech GitHub](https://github.com/ufrisk/pcileech)
-- **MCP 协议：** [MCP 文档](https://modelcontextprotocol.io/)
+- Discord： [加入我们的 Discord](https://discord.gg/PwAXYPMkkF)
+- 问题反馈：在本仓库提交 issue
+- PCILeech 文档： [PCILeech GitHub](https://github.com/ufrisk/pcileech)
+- MCP 文档： [MCP Documentation](https://modelcontextprotocol.io/)
 
 ## 更新日志
 
+### v1.0.0（2025-12-16）
+- 扩展到 19 个 MCP 工具，覆盖更完整的 PCILeech 功能
+- 内存工具新增虚拟地址模式（`pid` / `process_name`）
+- 新增地址转换、KMD、FPGA/高级工具
+- 增强参数验证与错误处理；服务器执行保持非阻塞
+
 ### v0.1.0（2025-12-10）
-- 初始版本发布
-- 三个 MCP 工具：memory_read、memory_write、memory_format
-- PCILeech 子进程集成
-- 基本错误处理和超时支持
-- Claude Code 集成支持
-- 多格式内存可视化
+- 初始版本
+- 三个 MCP 工具：`memory_read`、`memory_write`、`memory_format`
