@@ -193,27 +193,12 @@ mcp_server_pcileech/
 ├── config.json
 ├── pyproject.toml
 ├── requirements.txt
-├── run_tests.py
-├── TEST_CHECKLIST.md
 ├── README.md
 ├── README_CN.md
-├── CLAUDE.md
-├── test_error/               # run_tests.py 失败时生成
 └── pcileech/
     ├── pcileech.exe
     └── LICENSE.txt
 ```
-
-## 开发
-
-```bash
-black main.py pcileech_wrapper.py
-mypy main.py pcileech_wrapper.py
-python -m py_compile main.py pcileech_wrapper.py
-python run_tests.py
-```
-
-`run_tests.py` 仅覆盖无硬件的检查项；需要硬件的测试在 `TEST_CHECKLIST.md` 中以 `[HW]` 标注。
 
 ## 限制
 
