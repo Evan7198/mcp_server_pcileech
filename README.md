@@ -35,6 +35,7 @@ A Model Context Protocol (MCP) server that provides a standardized interface to 
 ```bash
 git clone https://github.com/Evan7198/mcp_server_pcileech
 cd mcp_server_pcileech
+// download release in https://github.com/ufrisk/pcileech for using the latest pcileech
 ```
 
 ### 2. Install dependencies
