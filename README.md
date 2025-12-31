@@ -1,3 +1,8 @@
+<a href="https://lattecode.cn" target="_blank">
+  <img src="https://img.shields.io/badge/Sponsor-LatteCode-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="LatteCode Sponsor">
+</a>
+
+
 # MCP Server for PCILeech
 
 [English](#english) | [中文](README_CN.md)
